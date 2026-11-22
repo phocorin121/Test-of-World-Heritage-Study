@@ -4900,16 +4900,49 @@ function toast(msg){
 }
 
 /* ---------- Share ---------- */
-async function doShare(text){
-  if(navigator.share){
-    try{ await navigator.share({title:t("title"), text}); return; }catch(e){ if(e.name==="AbortError") return; }
-  }
+async function copyShareText(text){
+  // Clipboard API requires a secure context on many browsers. Keep a
+  // selection-based fallback so sharing still works on older mobile browsers.
   try{
-    await navigator.clipboard.writeText(text);
-    toast(t("copied"));
+    if(navigator.clipboard && window.isSecureContext){
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  }catch(e){}
+  let field=null;
+  try{
+    field=document.createElement("textarea");
+    field.value=String(text);
+    field.setAttribute("readonly","");
+    field.style.position="fixed";
+    field.style.opacity="0";
+    field.style.pointerEvents="none";
+    field.style.left="-9999px";
+    document.body.appendChild(field);
+    field.focus();
+    field.select();
+    field.setSelectionRange(0,field.value.length);
+    return !!document.execCommand("copy");
   }catch(e){
-    toast(t("shareFail"));
+    return false;
+  }finally{
+    if(field && field.parentNode) field.parentNode.removeChild(field);
   }
+}
+async function doShare(text){
+  const payload=String(text||"").trim();
+  if(!payload){ toast(t("shareFail")); return; }
+  if(typeof navigator!=="undefined" && typeof navigator.share==="function"){
+    try{
+      await navigator.share({title:t("title"), text:payload});
+      return;
+    }catch(e){
+      // A user cancellation is intentional; do not show an error or copy instead.
+      if(e && e.name==="AbortError") return;
+    }
+  }
+  const copied=await copyShareText(payload);
+  toast(copied?t("copied"):t("shareFail"));
 }
 function shareProgress(){
   const td=tdy();
